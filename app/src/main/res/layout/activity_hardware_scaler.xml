@@ -75,6 +75,13 @@
             android:text="@string/surfaceSizeMedium" />
 
         <RadioButton
+            android:id="@+id/surfaceSize4K_radio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:onClick="onRadioButtonClicked"
+            android:text="@string/surfaceSize4K" />
+
+        <RadioButton
             android:id="@+id/surfaceSizeFull_radio"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

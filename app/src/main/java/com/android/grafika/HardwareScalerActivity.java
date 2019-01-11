@@ -16,12 +16,16 @@
 
 package com.android.grafika;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.opengl.GLES20;
 import android.opengl.Matrix;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.Choreographer;
 import android.view.Surface;
@@ -44,6 +48,7 @@ import com.android.grafika.gles.Texture2dProgram;
 import com.android.grafika.gles.WindowSurface;
 
 import java.lang.ref.WeakReference;
+
 
 
 /**
@@ -73,11 +78,16 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
     private static final int SURFACE_SIZE_TINY = 0;
     private static final int SURFACE_SIZE_SMALL = 1;
     private static final int SURFACE_SIZE_MEDIUM = 2;
-    private static final int SURFACE_SIZE_FULL = 3;
+    private static final int SURFACE_SIZE_4K = 3;
+    private static final int SURFACE_SIZE_FULL = 4;
 
-    private static final int[] SURFACE_DIM = new int[] { 64, 240, 480, -1 };
+    //GK changed the dimensions to more reasonable values
+    private static final int[] SURFACE_DIM = new int[] { 180, 360, 720, 2160, -1 };
+    //GK Introduced dimensions for height as well to have standard resolutions
+    private static final int[] SURFACE_DIM_H = new int[] { 320, 640, 1280, 3840, 1920 };
+    //GK added 4K option
     private static final String[] SURFACE_LABEL = new String[] {
-        "tiny", "small", "medium", "full"
+        "tiny", "small", "medium", "4K", "full"
     };
 
     private int mSelectedSize;
@@ -102,6 +112,13 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
 
         SurfaceView sv = (SurfaceView) findViewById(R.id.hardwareScaler_surfaceView);
         sv.getHolder().addCallback(this);
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.d("GK", "READ_EXTERNAL_STORAGE permission NOT granted!");
+        } else {
+            Log.d("GK", "READ_EXTERNAL_STORAGE permission granted.");
+        }
     }
 
     @Override
@@ -147,11 +164,15 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
                 mWindowWidthHeight[i][1] = mFullViewHeight;
             } else if (mFullViewWidth < mFullViewHeight) {
                 // portrait
+                //GK using standard resolution instead of calculated non standard ones
                 mWindowWidthHeight[i][0] = SURFACE_DIM[i];
-                mWindowWidthHeight[i][1] = (int) (SURFACE_DIM[i] * windowAspect);
+                //mWindowWidthHeight[i][1] = (int) (SURFACE_DIM[i] * windowAspect);
+                mWindowWidthHeight[i][1] = (int) (SURFACE_DIM_H[i]);
             } else {
                 // landscape
-                mWindowWidthHeight[i][0] = (int) (SURFACE_DIM[i] / windowAspect);
+                //GK using standard resolution instead of calculated non standard ones
+                //mWindowWidthHeight[i][0] = (int) (SURFACE_DIM[i] / windowAspect);
+                mWindowWidthHeight[i][0] = (int) (SURFACE_DIM_H[i]);
                 mWindowWidthHeight[i][1] = SURFACE_DIM[i];
             }
         }
@@ -160,7 +181,7 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
         updateControls();
 
         SurfaceView sv = (SurfaceView) findViewById(R.id.hardwareScaler_surfaceView);
-        mRenderThread = new RenderThread(sv.getHolder());
+        mRenderThread = new RenderThread(holder);
         mRenderThread.setName("HardwareScaler GL render");
         mRenderThread.start();
         mRenderThread.waitUntilReady();
@@ -246,6 +267,9 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             case R.id.surfaceSizeMedium_radio:
                 newSize = SURFACE_SIZE_MEDIUM;
                 break;
+            case R.id.surfaceSize4K_radio:
+                newSize = SURFACE_SIZE_4K;
+                break;
             case R.id.surfaceSizeFull_radio:
                 newSize = SURFACE_SIZE_FULL;
                 break;
@@ -281,6 +305,7 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
         configureRadioButton(R.id.surfaceSizeTiny_radio, SURFACE_SIZE_TINY);
         configureRadioButton(R.id.surfaceSizeSmall_radio, SURFACE_SIZE_SMALL);
         configureRadioButton(R.id.surfaceSizeMedium_radio, SURFACE_SIZE_MEDIUM);
+        configureRadioButton(R.id.surfaceSize4K_radio, SURFACE_SIZE_4K);
         configureRadioButton(R.id.surfaceSizeFull_radio, SURFACE_SIZE_FULL);
 
         TextView tv = (TextView) findViewById(R.id.viewSizeValue_text);
@@ -325,8 +350,10 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
         private WindowSurface mWindowSurface;
         private FlatShadedProgram mFlatProgram;
         private Texture2dProgram mTexProgram;
+        private Texture2dProgram mTexProgramExt;
         private int mCoarseTexture;
         private int mFineTexture;
+        private int mGalleryImageTexture;
         private boolean mUseFlatShading;
 
         // Orthographic projection matrix.
@@ -334,10 +361,12 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
 
         private final Drawable2d mTriDrawable = new Drawable2d(Drawable2d.Prefab.TRIANGLE);
         private final Drawable2d mRectDrawable = new Drawable2d(Drawable2d.Prefab.RECTANGLE);
+        private final Drawable2d mRectExtDrawable = new Drawable2d(Drawable2d.Prefab.RECTANGLE);
 
         // One spinning triangle, one bouncing rectangle, and four edge-boxes.
         private Sprite2d mTri;
         private Sprite2d mRect;
+        private Sprite2d mRectExt;
         private Sprite2d mEdges[];
         private float mRectVelX, mRectVelY;     // velocity, in viewport units per second
         private float mInnerLeft, mInnerTop, mInnerRight, mInnerBottom;
@@ -359,6 +388,7 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
 
             mTri = new Sprite2d(mTriDrawable);
             mRect = new Sprite2d(mRectDrawable);
+            mRectExt = new Sprite2d(mRectExtDrawable);
             mEdges = new Sprite2d[4];
             for (int i = 0; i < mEdges.length; i++) {
                 mEdges[i] = new Sprite2d(mRectDrawable);
@@ -443,8 +473,11 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             // Programs used for drawing onto the screen.
             mFlatProgram = new FlatShadedProgram();
             mTexProgram = new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_2D);
+            mTexProgramExt = new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_2D);
+
             mCoarseTexture = GeneratedTexture.createTestTexture(GeneratedTexture.Image.COARSE);
             mFineTexture = GeneratedTexture.createTestTexture(GeneratedTexture.Image.FINE);
+            mGalleryImageTexture = GeneratedTexture.createTestTexture(GeneratedTexture.Image.GALLERY);
 
             // Set the background color.
             GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -501,6 +534,12 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             mRectVelX = 1 + smallDim / 4.0f;
             mRectVelY = 1 + smallDim / 5.0f;
 
+            mRectExt.setColor(0.9f, 0.1f, 0.1f);
+            mRectExt.setTexture(mGalleryImageTexture);
+            //mRectExt.setScale(smallDim / 5.0f, smallDim / 5.0f);
+            mRectExt.setScale(width, height); //GK let's not scale the image
+            mRectExt.setPosition(width / 2.0f, height / 2.0f);
+
             // left edge
             float edgeWidth = 1 + width / 64.0f;
             mEdges[0].setColor(0.5f, 0.5f, 0.5f);
@@ -548,6 +587,10 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
                 mTexProgram.release();
                 mTexProgram = null;
             }
+            if (mTexProgramExt != null) {
+                mTexProgramExt.release();
+                mTexProgramExt = null;
+            }
             GlUtil.checkGlError("releaseGl done");
 
             mEglCore.makeNothingCurrent();
@@ -559,6 +602,7 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
         private void setFlatShading(boolean useFlatShading) {
             mUseFlatShading = useFlatShading;
         }
+
 
         /**
          * Handles the frame update.  Runs when Choreographer signals.
@@ -580,7 +624,8 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             // by recording at ~30fps instead of the display refresh rate.  As a quick hack
             // we just record every-other frame, using a "recorded previous" flag.
 
-            update(timeStampNanos);
+            //GK don't need to update screen constantly
+            //update(timeStampNanos);
 
             long diff = (System.nanoTime() - timeStampNanos) / 1000000;
             if (diff > 15) {
@@ -663,18 +708,21 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             // Textures may include alpha, so turn blending on.
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-            if (mUseFlatShading) {
-                mTri.draw(mFlatProgram, mDisplayProjectionMatrix);
-                mRect.draw(mFlatProgram, mDisplayProjectionMatrix);
-            } else {
-                mTri.draw(mTexProgram, mDisplayProjectionMatrix);
-                mRect.draw(mTexProgram, mDisplayProjectionMatrix);
-            }
+            //GK disabled drawing of original rectangle and triangle, just drawing the image texture
+//            if (mUseFlatShading) {
+//                mTri.draw(mFlatProgram, mDisplayProjectionMatrix);
+//                mRect.draw(mFlatProgram, mDisplayProjectionMatrix);
+//            } else {
+//                mTri.draw(mTexProgram, mDisplayProjectionMatrix);
+                //mRect.draw(mTexProgram, mDisplayProjectionMatrix);
+                mRectExt.draw(mTexProgramExt, mDisplayProjectionMatrix);
+
+//            }
             GLES20.glDisable(GLES20.GL_BLEND);
 
-            for (int i = 0; i < 4; i++) {
-                mEdges[i].draw(mFlatProgram, mDisplayProjectionMatrix);
-            }
+//            for (int i = 0; i < 4; i++) {
+//                mEdges[i].draw(mFlatProgram, mDisplayProjectionMatrix);
+//            }
 
             GlUtil.checkGlError("draw done");
         }
@@ -734,6 +782,7 @@ public class HardwareScalerActivity extends Activity implements SurfaceHolder.Ca
             sendMessage(obtainMessage(MSG_DO_FRAME,
                     (int) (frameTimeNanos >> 32), (int) frameTimeNanos));
         }
+
 
         /**
          * Sends a new value for the "flat shaded" boolean.

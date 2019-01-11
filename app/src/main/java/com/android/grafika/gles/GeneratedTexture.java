@@ -16,6 +16,9 @@
 
 package com.android.grafika.gles;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.opengl.GLES20;
 
 import java.nio.ByteBuffer;
@@ -26,7 +29,7 @@ import java.nio.ByteBuffer;
 public class GeneratedTexture {
     //private static final String TAG = GlUtil.TAG;
 
-    public enum Image { COARSE, FINE };
+    public enum Image { COARSE, FINE, GALLERY };
 
     // Basic colors, in little-endian RGBA.
     private static final int BLACK = 0x00000000;
@@ -56,7 +59,7 @@ public class GeneratedTexture {
     // Generate test image data.  This must come after the other values are initialized.
     private static final ByteBuffer sCoarseImageData = generateCoarseData();
     private static final ByteBuffer sFineImageData = generateFineData();
-
+    private static final ByteBuffer sGalleryImageData = generateGalleryImageData();
 
     /**
      * Creates a test texture in the current GL context.
@@ -75,6 +78,11 @@ public class GeneratedTexture {
             case FINE:
                 buf = sFineImageData;
                 break;
+            case GALLERY:
+                buf = sGalleryImageData;
+                //FIXME: shouldn't have fixed width and height, it should come from the loaded image
+                return GlUtil.createImageTexture(buf, 360, 640, FORMAT);
+                //break;
             default:
                 throw new RuntimeException("unknown image");
         }
@@ -159,6 +167,37 @@ public class GeneratedTexture {
 
         ByteBuffer byteBuf = ByteBuffer.allocateDirect(buf.length);
         byteBuf.put(buf);
+        byteBuf.position(0);
+        return byteBuf;
+    }
+
+    private static ByteBuffer generateGalleryImageData() {
+
+        // GK load the image from disk
+        // FIXME: ideally should pick the image from an image picker and not hardcode this path
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap bitmap = BitmapFactory.decodeFile("/sdcard/Pictures/scaler_data/1920x1080_sRGB_BT709/1920x1080_sRGB_BT709_resized_lanczos3_640x360/calbuco_10s_test_fr5.png", options);
+
+        //GK rotate the image, as image is landscape and app is running in portrait mode
+        // TODO: make sure this way of rotating the image is not changing pixel values by interpolation, if it does it would make more sense to rotate by manually transposing/permuting the image
+        Matrix matrix = new Matrix();
+        matrix.postRotate(-90);
+        bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, false);
+
+
+        int bytes = bitmap.getByteCount();
+
+        //Create a new buffer
+        ByteBuffer buffer = ByteBuffer.allocate(bytes);
+        //Move the byte data to the buffer
+        bitmap.copyPixelsToBuffer(buffer);
+        byte[] array = buffer.array();
+
+
+
+        ByteBuffer byteBuf = ByteBuffer.allocateDirect(array.length);
+        byteBuf.put(array);
         byteBuf.position(0);
         return byteBuf;
     }

@@ -85,6 +85,7 @@
     <string name="surfaceSizeTiny">[tiny]</string>
     <string name="surfaceSizeSmall">[small]</string>
     <string name="surfaceSizeMedium">[medium]</string>
+    <string name="surfaceSize4K">[4K]</string>
     <string name="surfaceSizeFull">[full]</string>
     <string name="flatShaded">flat shaded</string>
     <string name="multiSurfaceMessage">This is a test!</string>
